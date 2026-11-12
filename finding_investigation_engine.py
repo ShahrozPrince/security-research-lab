@@ -36,7 +36,7 @@ def normalize(raw: dict) -> list[dict]:
     results = raw.get('results', [])
     if not isinstance(results, list):
         raise ValueError('Semgrep JSON must contain a results list')
-     analysis_errors = raw.get('errors') or []
+    analysis_errors = raw.get('errors') or []
     if not isinstance(analysis_errors, list):
         raise ValueError('Invalid Semgrep analysis errors field')
     if analysis_errors:
