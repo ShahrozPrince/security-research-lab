@@ -45,6 +45,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python -c 'import json,os,collections; d=json.load(open(os.path.join(os.environ["RUNNER_TEMP"],"source-review.json"))); print("Analysis error types:",dict(collections.Counter(str(e.get("type","unknown")) for e in d.get("errors",[])))); print("Analysis error levels:",dict(collections.Counter(str(e.get("level","unknown")) for e in d.get("errors",[]))))'
           python finding_investigation_engine.py --input "$RUNNER_TEMP/source-review.json"
           rm -f "$RUNNER_TEMP/source-review.json"
       - name: Reminder
