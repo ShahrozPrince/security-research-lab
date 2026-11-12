@@ -1,0 +1,17 @@
+id: local-ci-health-check
+
+info:
+  name: Local CI Fixture Health Check (not a vulnerability)
+  author: security-research-lab
+  severity: info
+  description: Match the known content of the loopback-only synthetic test server.
+
+http:
+  - method: GET
+    path:
+      - '{{BaseURL}}/health'
+    matchers:
+      - type: word
+        part: body
+        words:
+          - 'security-lab-ok'

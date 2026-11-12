@@ -1,0 +1,89 @@
+name: Authorized Local Web-Tool Lab
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nuclei-loopback:
+    name: Nuclei on synthetic localhost fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install pinned Nuclei release with checksum verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp
+          curl -fsSL --retry 3 -o nuclei.zip https://github.com/projectdiscovery/nuclei/releases/download/v3.11.1/nuclei_3.11.1_linux_amd64.zip
+          curl -fsSL --retry 3 -o nuclei_checksums.txt https://github.com/projectdiscovery/nuclei/releases/download/v3.11.1/nuclei_3.11.1_checksums.txt
+          grep -E ' [*]?nuclei_3.11.1_linux_amd64.zip$' nuclei_checksums.txt | sed 's/nuclei_3.11.1_linux_amd64.zip/nuclei.zip/' | sha256sum -c -
+          mkdir -p nuclei-bin
+          unzip -oq nuclei.zip nuclei -d nuclei-bin
+          sudo install -m 0755 nuclei-bin/nuclei /usr/local/bin/nuclei
+          nuclei -version
+      - name: Start loopback-only test fixture
+        shell: bash
+        run: |
+          python3 lab_http/local_server.py > /tmp/local-fixture.log 2>&1 &
+          for i in $(seq 1 15); do
+            if curl -fsS http://127.0.0.1:8765/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Run only our local Nuclei template
+        shell: bash
+        env:
+          DISABLE_NUCLEI_TEMPLATES_PUBLIC_DOWNLOAD: 'true'
+        run: |
+          mkdir -p tool-reports
+          nuclei -u http://127.0.0.1:8765 -t lab_http/local-nuclei-check.yaml \
+            -duc -ni -rate-limit 1 -c 1 -timeout 5 -jsonl \
+            -o tool-reports/nuclei-local.jsonl
+          test -s tool-reports/nuclei-local.jsonl
+      - name: Save local Nuclei report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: local-nuclei-report
+          path: tool-reports/
+          if-no-files-found: warn
+          retention-days: 7
+
+  zap-loopback:
+    name: ZAP baseline on synthetic localhost fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Start loopback-only test fixture
+        shell: bash
+        run: |
+          python3 lab_http/local_server.py > /tmp/local-fixture.log 2>&1 &
+          for i in $(seq 1 15); do
+            if curl -fsS http://127.0.0.1:8765/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Run ZAP passive baseline only on localhost
+        shell: bash
+        run: |
+          mkdir -p tool-reports
+          chmod 777 tool-reports
+          docker run --rm --network host -v "$PWD/tool-reports:/zap/wrk/:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://127.0.0.1:8765 -I -m 1 \
+            -r zap-local.html -J zap-local.json
+      - name: Save local ZAP report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: local-zap-report
+          path: tool-reports/
+          if-no-files-found: warn
+          retention-days: 7
