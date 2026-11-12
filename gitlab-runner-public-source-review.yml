@@ -1,0 +1,69 @@
+name: GitLab Runner Public Source Review
+
+# Read-only analysis of a public source repository; not a live-target scanner.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitlab-runner-public-review
+  cancel-in-progress: false
+
+jobs:
+  review-public-go-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SEMGREP_SEND_METRICS: 'off'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - name: Fetch GitLab Runner public source (read-only, sparse)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://gitlab.com/gitlab-org/gitlab-runner.git "$RUNNER_TEMP/gitlab-runner"
+          git -C "$RUNNER_TEMP/gitlab-runner" sparse-checkout set commands executors
+          echo "Reviewed public source commit:"
+          git -C "$RUNNER_TEMP/gitlab-runner" rev-parse HEAD
+          test -d "$RUNNER_TEMP/gitlab-runner/commands"
+          test -d "$RUNNER_TEMP/gitlab-runner/executors"
+
+      - name: Install known working Semgrep version
+        run: python -m pip install 'semgrep==1.185.0'
+
+      - name: Run offline static review without publishing findings
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Do not upload security leads to this public repository.
+          semgrep scan --config p/default --metrics off --quiet --json \
+            --output "$RUNNER_TEMP/source-review.json" \
+            "$RUNNER_TEMP/gitlab-runner/commands" \
+            "$RUNNER_TEMP/gitlab-runner/executors"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          source = Path(os.environ["RUNNER_TEMP"]) / "source-review.json"
+          data = json.loads(source.read_text(encoding="utf-8"))
+          print("Public-source static review completed.")
+          print("Unverified rule matches:", len(data.get("results", [])))
+          print("No vulnerabilities independently verified.")
+          print("No findings exported to public CI logs or artifacts.")
+          PY
+
+      - name: Confidentiality reminder
+        if: always()
+        run: |
+          echo "This run only fetches PUBLIC source code. No GitLab.com endpoint was probed."
+          echo "Validate hypotheses on your own authorized local setup before any private report."
