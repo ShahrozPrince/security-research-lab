@@ -1,0 +1,16 @@
+
+rules:
+  - id: training.python-command-injection
+    languages:
+      - python
+    severity: ERROR
+    message: "Untrusted input reaches os.system(). Command injection risk."
+    mode: taint
+    pattern-sources:
+      - pattern: input(...)
+    pattern-sinks:
+      - pattern: os.system(...)
+    metadata:
+      category: security
+      cwe:
+        - CWE-78
