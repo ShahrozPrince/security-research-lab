@@ -1,0 +1,7 @@
+{
+  "external_scanning": false,
+  "approved_targets": [],
+  "program_policy_reviewed": false,
+  "automation_permission_confirmed": false,
+  "notes": "This version never scans or contacts websites, even if edited. Keep external scanning disabled."
+}
